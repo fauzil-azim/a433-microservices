@@ -25,7 +25,7 @@ services:
       # For a GUI/shell from the host add:  ports: ["127.0.0.1:27017:27017"]
 
   item-app:
-    build: . # default target = runtime
+    image: "ghcr.io/${GITHUB_USERNAME:?Set GITHUB_USERNAME first}/item-app:v1"
     networks:
       - item-network
     ports:
