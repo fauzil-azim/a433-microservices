@@ -1,0 +1,39 @@
+# docker compose up --build
+networks:
+  item-network:
+    driver: bridge
+
+volumes:
+  app-db:
+
+services:
+  item-db:
+    image: mongo:3
+    networks:
+      item-network:
+        aliases:
+          - mongodb
+    volumes:
+      - app-db:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: always
+      # No `ports:` on purpose: only reachable from other containers.
+      # For a GUI/shell from the host add:  ports: ["127.0.0.1:27017:27017"]
+
+  item-app:
+    build: . # default target = runtime
+    networks:
+      - item-network
+    ports:
+      - "80:8080" # host:container (container port = $PORT in the image)
+    environment:
+      DB_HOST: item-db # app.js -> mongodb://$DB_HOST:27017/accumulator
+    depends_on:
+      item-db:
+        condition: service_healthy # wait for Mongo to ANSWER, not merely to start
+    restart: always
