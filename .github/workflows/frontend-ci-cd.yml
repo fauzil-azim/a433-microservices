@@ -1,0 +1,37 @@
+name: KarsaJobs Frontend CI/CD
+
+on:
+  push:
+    branches: [karsajobs-ui]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  lint-dockerfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+      - name: ShellCheck
+        run: shellcheck build_push_image_karsajobs_ui.sh
+
+  build-app-karsajobs-ui:
+    needs: lint-dockerfile
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.build.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push image
+        id: build
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # No backend URL here any more: it is injected at runtime from the Kubernetes ConfigMap
+        run: bash ./build_push_image_karsajobs_ui.sh
