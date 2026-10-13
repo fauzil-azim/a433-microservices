@@ -28,6 +28,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+
+      # Vue inlines VUE_APP_* values into the JS when the app is built/started, from the `.env` file.
+      # The real URL lives in a GitHub secret, and this step writes it into `.env` before the image is
+      # built, replacing the placeholder committed in the repo. (The runner is a throw-away VM, so the
+      # checked-out `.env` is overwritten only there, never in repository.)
+      #
+      # Create it once: repo -> Settings -> Secrets and variables -> Actions -> New repository secret
+      #   Name: VUE_APP_BACKEND     Value: http://192.168.49.2:30081   (browser-reachable backend URL)
+      # Changing a secret does NOT trigger a build: re-run the workflow (Actions -> Run workflow).
+      - name: Inject backend URL into .env from secret
+        shell: bash
+        env:
+          VUE_APP_BACKEND: ${{ secrets.VUE_APP_BACKEND }} # via env, never pasted into the script text
+        run: |
+          set -euo pipefail
+          url="$(printf '%s' "$VUE_APP_BACKEND" | tr -d '[:space:]')"
+          url="${url%/}"
+          if [[ ! "$url" =~ ^https?://[^\<\>]+$ ]]; then
+            echo "::error::Secret VUE_APP_BACKEND is missing or not a valid URL (expected e.g. http://192.168.49.2:30081)"
+            exit 1
+          fi
+          printf 'VUE_APP_BACKEND=%s\n' "$url" > .env
+          echo "Wrote .env with VUE_APP_BACKEND (value hidden in logs: it is a masked secret)"
+
       - name: Build and push image
         id: build
         env:
