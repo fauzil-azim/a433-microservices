@@ -1,0 +1,48 @@
+name: KarsaJobs Backend CI/CD
+
+on:
+  push:
+    branches: [karsajobs] # branch that holds the backend code
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write # push to GHCR with the built-in GITHUB_TOKEN
+
+jobs:
+  lint-dockerfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+      - name: ShellCheck # preinstalled on ubuntu-latest
+        run: shellcheck build_push_image_karsajobs.sh
+
+  # The project's tests are a short tests: they don't need a real MongoDB
+  test-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -v -short --count=1 $(go list ./...)
+
+  # Build & push (script)
+  build-app-karsajobs:
+    needs: [lint-dockerfile, test-app]
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.build.outputs.image }} # e.g. ghcr.io/<owner>/karsajobs:<short-sha>
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3 # docker-container driver => registry cache works
+      - name: Build and push image
+        id: build
+        env:
+          REGISTRY_USER: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash ./build_push_image_karsajobs.sh # `bash` => works even without the +x bit
+
