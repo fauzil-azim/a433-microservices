@@ -1,0 +1,71 @@
+name: Shipping Service CI to GHCR
+
+on:
+  push:
+    branches: ["shipping-service"]
+  workflow_dispatch:
+
+# Deny everything by default; each job asks only for what it needs (least privilege for GITHUB_TOKEN)
+permissions: {}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PATH: ${{ github.repository }} # owner/repo -> ghcr.io/owner/repo (lowercased by metadata-action)
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false # the token is not needed after checkout: don't leave it on disk
+      - name: Lint the Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+      - name: Syntax-check the JavaScript
+        run: |
+          node --check index.js
+
+  build-and-push:
+    needs: lint
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.ref.outputs.image }} # ghcr.io/owner/repo@sha256:...  (immutable reference)
+
+    permissions:
+      contents: read
+      packages: write # push to GHCR with the built-in GITHUB_TOKEN
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Build once for amd64 into the runner's local Docker daemon, ONLY to scan it. Nothing is pushed here.
+      - name: Build image for scanning
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: .
+          load: true
+          push: false
+          platforms: linux/amd64
+          tags: scan-target:ci
+
+      - name: Log in to the Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Shipping Service
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_PATH }}/shipping-service:latest
